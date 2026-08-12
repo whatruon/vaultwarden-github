@@ -1,0 +1,40 @@
+name: vaultwarden
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */5 * * *"
+
+concurrency:
+  group: vaultwarden
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Install tailscale
+        run: curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Tailscale up
+        run: sudo tailscale up --ephemeral --auth-key=${{ secrets.TS_AUTHKEY }}
+
+      - name: Run vaultwarden
+        run: |
+          docker run -d --name vaultwarden \
+            -e DATABASE_URL="${{ secrets.VAULTWARDEN_DB_URL }}" \
+            -p 80:80 \
+            vaultwarden/server:latest
+
+      - name: Keep runner alive
+        run: |
+          while true; do
+            if ! docker inspect -f '{{.State.Running}}' vaultwarden 2>/dev/null | grep -q true; then
+              docker start vaultwarden || docker run -d --name vaultwarden \
+                -e DATABASE_URL="${{ secrets.VAULTWARDEN_DB_URL }}" \
+                -p 80:80 \
+                vaultwarden/server:latest
+            fi
+            sleep 60
+          done
