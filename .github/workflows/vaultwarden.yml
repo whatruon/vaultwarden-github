@@ -65,6 +65,7 @@ jobs:
           docker run -d --name vaultwarden \
             --network vaultwarden-net \
             -e DATABASE_URL="${{ secrets.VAULTWARDEN_DB_URL }}" \
+            -e I_REALLY_WANT_VOLATILE_STORAGE="true" \
             vaultwarden/server:latest
 
       - name: Run caddy
