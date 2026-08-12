@@ -28,7 +28,7 @@ jobs:
           fi
 
       - name: Tailscale up
-        run: sudo tailscale up --hostname=vault --auth-key=${{ secrets.TS_AUTHKEY }} --advertise-tags=tag:vault --advertise-exit-node
+        run: sudo tailscale up --hostname=vault --auth-key=${{ secrets.TS_AUTHKEY }} --advertise-exit-node
 
       - name: Restore certs from cache
         id: cert-cache
