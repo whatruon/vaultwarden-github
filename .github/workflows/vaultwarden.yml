@@ -28,7 +28,7 @@ jobs:
           fi
 
       - name: Tailscale up
-        run: sudo tailscale up --hostname=vault --auth-key=${{ secrets.TS_AUTHKEY }}
+        run: sudo tailscale up --hostname=vault --auth-key=${{ secrets.TS_AUTHKEY }} --advertise-tags=tag:vault --advertise-exit-node=yes
 
       - name: Restore certs from cache
         id: cert-cache
@@ -75,6 +75,21 @@ jobs:
             -v "$PWD:/etc/caddy" \
             -p 443:443 \
             caddy:latest
+
+      - name: Diagnose caddy routing
+        run: |
+          sleep 5
+          echo "=== docker ps ==="
+          docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          echo "=== caddy logs ==="
+          docker logs caddy 2>&1 | tail -50
+          echo "=== vaultwarden logs ==="
+          docker logs vaultwarden 2>&1 | tail -20
+          echo "=== caddy -> vaultwarden ==="
+          docker exec caddy wget -qO- --timeout=5 http://vaultwarden:80/ 2>&1 | head -5 || echo "FAILED: caddy cannot reach vaultwarden"
+          echo "=== tailscale ==="
+          tailscale status
+          tailscale ip -4
 
       - name: Keep runner alive
         run: |
