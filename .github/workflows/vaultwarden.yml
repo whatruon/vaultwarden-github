@@ -14,6 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
       - name: Install tailscale
         run: curl -fsSL https://tailscale.com/install.sh | sh
 
