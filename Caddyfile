@@ -1,0 +1,4 @@
+{$TS_CERT_DOMAIN} {
+	tls /certs/cert.pem /certs/key.pem
+	reverse_proxy vaultwarden:80
+}

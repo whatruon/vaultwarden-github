@@ -17,24 +17,53 @@ jobs:
       - name: Install tailscale
         run: curl -fsSL https://tailscale.com/install.sh | sh
 
+      - name: Remove stale tailscale device
+        run: |
+          DEVICE_ID=$(curl -fsSL -u "${{ secrets.TS_API_KEY }}:" \
+            "https://api.tailscale.com/api/v2/tailnet/${{ secrets.TS_TAILNET }}/devices" \
+            | jq -r '.devices[] | select(.hostname=="vaultwarden") | .id')
+          if [ -n "$DEVICE_ID" ]; then
+            curl -fsSL -X DELETE -u "${{ secrets.TS_API_KEY }}:" \
+              "https://api.tailscale.com/api/v2/device/$DEVICE_ID"
+          fi
+
       - name: Tailscale up
-        run: sudo tailscale up --ephemeral --auth-key=${{ secrets.TS_AUTHKEY }}
+        run: sudo tailscale up --hostname=vaultwarden --auth-key=${{ secrets.TS_AUTHKEY }}
+
+      - name: Fetch TLS cert from tailscale
+        run: |
+          mkdir -p certs
+          sudo tailscale cert --cert-file certs/cert.pem --key-file certs/key.pem "${{ secrets.TS_CERT_DOMAIN }}"
+          sudo chown -R $USER:$USER certs
+
+      - name: Create network
+        run: docker network create vaultwarden-net
 
       - name: Run vaultwarden
         run: |
           docker run -d --name vaultwarden \
+            --network vaultwarden-net \
             -e DATABASE_URL="${{ secrets.VAULTWARDEN_DB_URL }}" \
-            -p 80:80 \
             vaultwarden/server:latest
+
+      - name: Run caddy
+        run: |
+          docker run -d --name caddy \
+            --network vaultwarden-net \
+            -e TS_CERT_DOMAIN="${{ secrets.TS_CERT_DOMAIN }}" \
+            -v "$PWD/Caddyfile:/etc/caddy/Caddyfile" \
+            -v "$PWD/certs:/certs" \
+            -p 443:443 \
+            caddy:latest
 
       - name: Keep runner alive
         run: |
           while true; do
             if ! docker inspect -f '{{.State.Running}}' vaultwarden 2>/dev/null | grep -q true; then
-              docker start vaultwarden || docker run -d --name vaultwarden \
-                -e DATABASE_URL="${{ secrets.VAULTWARDEN_DB_URL }}" \
-                -p 80:80 \
-                vaultwarden/server:latest
+              docker start vaultwarden
+            fi
+            if ! docker inspect -f '{{.State.Running}}' caddy 2>/dev/null | grep -q true; then
+              docker start caddy
             fi
             sleep 60
           done
