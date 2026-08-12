@@ -30,11 +30,32 @@ jobs:
       - name: Tailscale up
         run: sudo tailscale up --hostname=vaultwarden --auth-key=${{ secrets.TS_AUTHKEY }}
 
-      - name: Fetch TLS cert from tailscale
+      - name: Restore certs from cache
+        id: cert-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: certs
+          key: vaultwarden-cert-${{ secrets.TS_CERT_DOMAIN }}
+          restore-keys: |
+            vaultwarden-cert-${{ secrets.TS_CERT_DOMAIN }}-
+
+      - name: Fetch TLS cert from tailscale (if needed)
+        id: cert-fetch
         run: |
           mkdir -p certs
-          sudo tailscale cert --cert-file certs/cert.pem --key-file certs/key.pem "${{ secrets.TS_CERT_DOMAIN }}"
-          sudo chown -R $USER:$USER certs
+          if [ -f certs/cert.pem ] && openssl x509 -in certs/cert.pem -noout -checkend 2592000 >/dev/null 2>&1; then
+            echo "Cached cert valid for 30+ days, skipping renewal"
+          else
+            sudo tailscale cert --cert-file certs/cert.pem --key-file certs/key.pem "${{ secrets.TS_CERT_DOMAIN }}"
+            sudo chown -R $USER:$USER certs
+          fi
+          echo "cert-serial=$(openssl x509 -in certs/cert.pem -noout -serial 2>/dev/null | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Save certs to cache
+        uses: actions/cache/save@v4
+        with:
+          path: certs
+          key: vaultwarden-cert-${{ secrets.TS_CERT_DOMAIN }}-${{ steps.cert-fetch.outputs.cert-serial }}
 
       - name: Create network
         run: docker network create vaultwarden-net
